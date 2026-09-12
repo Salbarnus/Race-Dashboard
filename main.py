@@ -93,6 +93,7 @@ def parse_car_telemetry_pkt(data: bytes) -> list:
         chunk = data[offset: offset + CAR_TELEMETRY_SIZE]
         vals = struct.unpack(CAR_TELEMETRY_FORMAT, chunk)
 
+        # appending object instance for each car with data in the list cars = []
         cars.append(CarTelemetryData(
             speed=vals[0],
             throttle=vals[1],
@@ -115,8 +116,172 @@ def parse_car_telemetry_pkt(data: bytes) -> list:
         offset += CAR_TELEMETRY_SIZE    
     return cars
 
+def display_car_telemetry(data):
+    header = parse_header(data)
+    if header.packet_id == 6:
+        cars = parse_car_telemetry_pkt(data)
+        my_car = cars[header.player_car_index]
+        print(
+            f"Speed: {my_car.speed:3d} km/h | "
+            f"Gear: {my_car.gear:2d} | "
+            f"RPM: {my_car.engine_rpm:5d} | "
+            f"Tyre Pressures (PSI) RL/RR/FL/FR: "
+            f"{my_car.tyres_pressure[0]:.1f} / {my_car.tyres_pressure[1]:.1f} / "
+            f"{my_car.tyres_pressure[2]:.1f} / {my_car.tyres_pressure[3]:.1f} | "
+            f"Tyre Surface Temp RL/RR/FL/FR: "
+            f"{my_car.tyres_surface_temperature[0]} / {my_car.tyres_surface_temperature[1]} / "
+            f"{my_car.tyres_surface_temperature[2]} / {my_car.tyres_surface_temperature[3]}"
+        )
+
+
+# 3. CAR STATUS PACKET (packet_id == 7)
+#    Contains, per car: tc, antilock brakes, fuel mix, front brake bias, pit limiter,
+#    fuel in tank, fuel capacity etc
+#    Format string below decodes ONE car's block (57 bytes).
 # ---------------------------------------------------------------------------
-# 3. MAIN LOOP — listen, decode header, route by packet type
+CAR_STATUS_FORMAT = "<BBBBBfffHHBBHBBBbfffBfffB"
+CAR_STATUS_SIZE = struct.calcsize(CAR_STATUS_FORMAT) # 57 bytes
+
+
+@dataclass
+class CarStatusData:
+    traction_control: int
+    anti_lock_brakes: int
+    fuel_mix: int
+    front_brake_bias: int
+    pit_limiter: int
+
+    fuel_in_tank: float
+    fuel_capacity: float
+    fuel_remaining_laps: float
+
+    max_rpm: int
+    idle_rpm: int
+    max_gears: int
+    drs_allowed: int
+    drs_activation_distance: int
+
+    actual_tyre_compound: int
+    visual_tyre_compound: int
+    tyres_age_laps: int
+    vehicle_fia_flags: int
+
+    engine_power_ice: float
+    engine_power_mguk: float
+    ers_store_energy: float
+
+    ers_deploy_mode: int
+
+    ers_harvested_this_lap_mguk: float
+    ers_harvested_this_lap_mguh: float
+    ers_deployed_this_lap: float
+
+    network_paused: int
+
+
+def parse_car_status_pkt(data: bytes) -> list:
+    offset = HEADER_SIZE
+    cars_status = []
+
+    for i in range(NUM_CARS):
+        chunk = data[offset: offset + CAR_STATUS_SIZE]
+        vals = struct.unpack(CAR_STATUS_FORMAT, chunk)
+
+        cars_status.append(CarStatusData(*vals))
+
+        offset += CAR_STATUS_SIZE
+    return cars_status
+
+def display_car_status(data):
+    header = parse_header(data)
+    if header.packet_id == 7:
+        cars_status = parse_car_status_pkt(data)
+        my_car_status = cars_status[header.player_car_index]
+        print(my_car_status)
+
+
+# 4. CAR DAMAGE PACKET (packet_id == 10)
+#    Contains, per car: tyre wear, tyres damage, brakes damage, tyre blisters
+#    front left wing damage, right wing damage etc
+#    Format string below decodes ONE car's block (57 bytes).
+# ---------------------------------------------------------------------------
+CAR_DAMAGE_FORMAT = "<4f4B4B4B18B"
+CAR_DAMAGE_SIZE = struct.calcsize(CAR_DAMAGE_FORMAT) # 46 bytes
+
+@dataclass
+class CarDamageData:
+    tyres_wear: tuple
+    tyres_damage: tuple
+    brakes_damage: tuple
+    tyre_blisters: tuple
+
+    front_left_wing_damage: int
+    front_right_wing_damage: int
+    rear_wing_damage: int
+    floor_damage: int
+    diffuser_damage: int
+    sidepod_damage: int
+    drs_fault: int
+    ers_fault: int
+    gear_box_damage: int
+    engine_damage: int
+    engine_mguh_wear: int
+    engine_es_wear: int
+    engine_ce_wear: int
+    engine_ice_wear: int
+    engine_mguk_wear: int
+    engine_tc_wear: int
+    engine_blown: int
+    engine_seized: int
+
+
+def parse_car_damage_pkt(data: bytes) -> list:
+    offset = HEADER_SIZE
+    cars_damage = []
+
+    for i in range(NUM_CARS):
+        chunk = data[offset: offset + CAR_DAMAGE_SIZE]
+        vals = struct.unpack(CAR_DAMAGE_FORMAT, chunk)
+
+        cars_damage.append(CarDamageData(
+            tyres_wear=vals[0:4],
+            tyres_damage=vals[4:8],
+            brakes_damage=vals[8:12],
+            tyre_blisters=vals[12:16],
+        
+            front_left_wing_damage=vals[16],
+            front_right_wing_damage=vals[17],
+            rear_wing_damage=vals[18],
+            floor_damage=vals[19],
+            diffuser_damage=vals[20],
+            sidepod_damage=vals[21],
+            drs_fault=vals[22],
+            ers_fault=vals[23],
+            gear_box_damage=vals[24],
+            engine_damage=vals[25],
+            engine_mguh_wear=vals[26],
+            engine_es_wear=vals[27],
+            engine_ce_wear=vals[28],
+            engine_ice_wear=vals[29],
+            engine_mguk_wear=vals[30],
+            engine_tc_wear=vals[31],
+            engine_blown=vals[32],
+            engine_seized=vals[33],
+        ))
+
+        offset += CAR_DAMAGE_SIZE    
+    return cars_damage
+
+
+def display_car_damage(data):
+    header = parse_header(data)
+    if header.packet_id == 10:
+        cars_damage = parse_car_damage_pkt(data)
+        my_car_damage = cars_damage[header.player_car_index]
+        print(my_car_damage)
+
+# ---------------------------------------------------------------------------
+# 5. MAIN LOOP — listen, decode header, route by packet type
 # ---------------------------------------------------------------------------
 def main():
 
@@ -138,21 +303,9 @@ def main():
             continue  
         
         # print(parse_header(data))
-        header = parse_header(data)
-        if header.packet_id == 6:
-            cars = parse_car_telemetry_pkt(data)
-            my_car = cars[header.player_car_index]
-            print(
-                f"Speed: {my_car.speed:3d} km/h | "
-                f"Gear: {my_car.gear:2d} | "
-                f"RPM: {my_car.engine_rpm:5d} | "
-                f"Tyre Pressures (PSI) RL/RR/FL/FR: "
-                f"{my_car.tyres_pressure[0]:.1f} / {my_car.tyres_pressure[1]:.1f} / "
-                f"{my_car.tyres_pressure[2]:.1f} / {my_car.tyres_pressure[3]:.1f} | "
-                f"Tyre Surface Temp RL/RR/FL/FR: "
-                f"{my_car.tyres_surface_temperature[0]} / {my_car.tyres_surface_temperature[1]} / "
-                f"{my_car.tyres_surface_temperature[2]} / {my_car.tyres_surface_temperature[3]}"
-            )
+        # display_car_telemetry(data)
+        display_car_status(data)
+        # display_car_damage(data)
 
 if __name__ == "__main__":
     main()
